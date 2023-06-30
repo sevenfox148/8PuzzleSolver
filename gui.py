@@ -4,9 +4,10 @@ from PyQt5.QtWidgets import *
 from random import sample
 from random import randint
 
-from astar import Astar_search
+
+from astar import Astar
 from puzzle import count_inversions
-from rbfs import recursive_best_first_search
+from rbfs import RBFS
 
 
 class PuzzleElement(QLabel):
@@ -22,8 +23,28 @@ class PuzzleElement(QLabel):
 
         self.setAlignment(Qt.AlignCenter)
 
-    def update_value(self, num):
-        self.setText(str(num))
+    def update_value(self, state):
+        self.setText(str(state))
+
+
+class PuzzleLayout(QGridLayout):
+    def __init__(self, arr):
+        super().__init__()
+        self.setSpacing(10)
+        self.setVerticalSpacing(10)
+        self.__elements = []
+        for i in range(9):
+            element = PuzzleElement(arr[i])
+            self.addWidget(element, i // 3, i % 3)
+            self.__elements.append(element)
+
+    def update_layout(self, arr):
+        for i in range(9):
+            self.__elements[i].update_value(arr[i])
+
+    def setSize(self, size):
+        for i in range(9):
+            self.__elements[i].setFixedSize(size, size)
 
 
 class InputPuzzleElement(QLineEdit):
@@ -32,7 +53,7 @@ class InputPuzzleElement(QLineEdit):
         self.setFixedSize(40, 40)
         self.setStyleSheet("background-color: white;")
 
-    def check_value(self):
+    def __check_value(self):
         if (self.text().isdigit() and int(self.text()) < 9 and int(self.text()) != 0) or self.text() == "":
             self.setStyleSheet("background-color: white;")
             return True
@@ -40,37 +61,11 @@ class InputPuzzleElement(QLineEdit):
             self.setStyleSheet("background-color: #FE896E;")
             return False
 
-    def setRed(self):
-        self.setStyleSheet("background-color: #FE896E;")
-
-    def setWhite(self):
-        self.setStyleSheet("background-color: white;")
-
     def get_value(self):
-        if self.check_value():
+        if self.__check_value():
             return self.text()
         else:
             return None
-
-
-class PuzzleLayout(QGridLayout):
-    def __init__(self, arr):
-        super().__init__()
-        self.setSpacing(10)
-        self.setVerticalSpacing(10)
-        self.elements = []
-        for i in range(9):
-            element = PuzzleElement(arr[i])
-            self.addWidget(element, i // 3, i % 3)
-            self.elements.append(element)
-
-    def update_layout(self, arr):
-        for i in range(9):
-            self.elements[i].update_value(arr[i])
-
-    def setSize(self, size):
-        for i in range(9):
-            self.elements[i].setFixedSize(size, size)
 
 
 class PuzzleInputLayout(QGridLayout):
@@ -78,96 +73,91 @@ class PuzzleInputLayout(QGridLayout):
         super().__init__()
         self.setSpacing(10)
         self.setVerticalSpacing(10)
-        self.elements = []
+        self.__elements = []
         for i in range(9):
             element = InputPuzzleElement()
             self.addWidget(element, i // 3, i % 3)
-            self.elements.append(element)
-        self.arr = None
+            self.__elements.append(element)
 
     def setWhite(self):
-        for element in self.elements:
+        for element in self.__elements:
             element.setStyleSheet("background-color: white;")
 
     def get_puzzle_values(self):
-        try:
-            values = []
-            is_unique = True
-            is_valid = True
-            for element in self.elements:
-                value = element.get_value()
-                if value is None:
-                    is_valid = False
-                    continue
+        values = []
+        is_unique = True
+        is_valid = True
+        for element in self.__elements:
+            value = element.get_value()
+            if value is None:
+                is_valid = False
+                continue
 
-                if (value != '' and int(value) in values) or (value == '' and " " in values):
-                    is_unique = False
-                    element.setStyleSheet("background-color: #FE896E;")
-                values.append(int(value) if value.isdigit() else " ")
-            if is_unique and is_valid:
-                return values
-            else:
-                return None
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
+            if (value != '' and int(value) in values) or (value == '' and " " in values):
+                is_unique = False
+                element.setStyleSheet("background-color: #FE896E;")
+            values.append(int(value) if value.isdigit() else " ")
+        if is_unique and is_valid:
+            return values
+        else:
+            return None
 
     def set_values(self, values):
         for i in range(9):
-            self.elements[i].setText(str(values[i]))
+            self.__elements[i].setText(str(values[i]))
 
 
 class PuzzleInputDialog(QDialog):
-    start_puzzle = None
-    end_puzzle = None
+    __start_puzzle = None
+    __end_puzzle = None
 
     def __init__(self):
         super().__init__()
         self.setFixedSize(QSize(300, 500))
         self.setStyleSheet("background-color: #BFDB7F;")
         self.setWindowTitle("Введення головоломки")
-        self.layout = QVBoxLayout(self)
+        layout = QVBoxLayout(self)
 
-        self.labelStart = QLabel("Введіть початковий стан:")
-        self.laberEnd = QLabel("Введіть кінцевий стан:")
+        labelStart = QLabel("Введіть початковий стан:")
+        labelEnd = QLabel("Введіть кінцевий стан:")
         self.input_start_layout = PuzzleInputLayout()
         self.input_start_layout.setAlignment(Qt.AlignHCenter)
         self.input_end_layout = PuzzleInputLayout()
         self.input_end_layout.setAlignment(Qt.AlignHCenter)
 
-        self.classic_endButton = QPushButton("Класична кінцева розстановка")
-        self.classic_endButton.setStyleSheet("background-color: #FFD798;")
-        self.classic_endButton.setFixedSize(QSize(200, 30))
-        self.classic_endButton.clicked.connect(self.classic_end)
+        classic_endButton = QPushButton("Класична кінцева розстановка")
+        classic_endButton.setStyleSheet("background-color: #FFD798;")
+        classic_endButton.setFixedSize(QSize(200, 30))
+        classic_endButton.clicked.connect(self.__classic_end)
 
-        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.button_box.setStyleSheet("background-color: #FFD798;")
-        self.button_box.accepted.connect(self.validate_input)
-        self.button_box.rejected.connect(self.reject)
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.setStyleSheet("background-color: #FFD798;")
+        button_box.accepted.connect(self.__validate_input)
+        button_box.rejected.connect(self.reject)
 
-        self.layout.setSpacing(20)
-        self.layout.addWidget(self.labelStart)
-        self.layout.addLayout(self.input_start_layout)
-        self.layout.addWidget(self.laberEnd)
-        self.layout.addLayout(self.input_end_layout)
-        self.layout.addWidget(self.classic_endButton)
-        self.layout.itemAt(4).setAlignment(Qt.AlignHCenter)
-        self.layout.addWidget(self.button_box)
-        self.layout.itemAt(5).setAlignment(Qt.AlignHCenter)
+        layout.setSpacing(20)
+        layout.addWidget(labelStart)
+        layout.addLayout(self.input_start_layout)
+        layout.addWidget(labelEnd)
+        layout.addLayout(self.input_end_layout)
+        layout.addWidget(classic_endButton)
+        layout.itemAt(4).setAlignment(Qt.AlignHCenter)
+        layout.addWidget(button_box)
+        layout.itemAt(5).setAlignment(Qt.AlignHCenter)
 
-    def classic_end(self):
+    def __classic_end(self):
         self.input_end_layout.set_values([1, 2, 3, 4, 5, 6, 7, 8, ''])
 
-    def validate_input(self):
+    def __validate_input(self):
         self.input_start_layout.setWhite()
         self.input_end_layout.setWhite()
-        self.start_puzzle = self.input_start_layout.get_puzzle_values()
-        self.end_puzzle = self.input_end_layout.get_puzzle_values()
-        if self.start_puzzle is not None and self.end_puzzle is not None:
+        self.__start_puzzle = self.input_start_layout.get_puzzle_values()
+        self.__end_puzzle = self.input_end_layout.get_puzzle_values()
+        if self.__start_puzzle is not None and self.__end_puzzle is not None:
             self.accept()
 
     def get_puzzle_input(self):
-        return self.start_puzzle, self.end_puzzle
+        return self.__start_puzzle, self.__end_puzzle
 
 
 class RandomPuzzleDialog(QDialog):
@@ -213,6 +203,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("8 puzzle solver")
         self.setStyleSheet("background-color: #FFD798;")
         self.setFixedSize(QSize(500, 600))
+        font = QFont()
+        font.setPointSize(8)
 
         mainWidget = QWidget()
         mainLayout = QVBoxLayout(mainWidget)
@@ -237,7 +229,9 @@ class MainWindow(QMainWindow):
         buttonsLayout.setAlignment(Qt.AlignHCenter)
 
         radio_astar = QRadioButton("A*")
+        radio_astar.setFont(font)
         radio_rbfs = QRadioButton("RBFS")
+        radio_rbfs.setFont(font)
         self.radio_astar = radio_astar
         self.radio_rbfs = radio_rbfs
 
@@ -246,6 +240,16 @@ class MainWindow(QMainWindow):
         radioLayout.addWidget(radio_rbfs)
 
         self.puzzleLayout = PuzzleLayout([" ", " ", " ", " ", " ", " ", " ", " ", " "])
+
+        costLayout = QHBoxLayout()
+        costLayout.setSpacing(10)
+        costMessage = QLabel("Кількість відкритих вузлів:")
+        costMessage.setFont(font)
+        self.costLabel = QLabel()
+        self.costLabel.setFont(font)
+        self.costLabel.setFixedSize(100, 20)
+        costLayout.addWidget(costMessage)
+        costLayout.addWidget(self.costLabel)
 
         fileButton = QPushButton("Записати в файл")
         fileButton.setStyleSheet("background-color: #BFDB7F;")
@@ -260,55 +264,55 @@ class MainWindow(QMainWindow):
         mainLayout.addWidget(startButton)
         mainLayout.itemAt(3).setAlignment(Qt.AlignHCenter)
         mainLayout.addLayout(self.puzzleLayout)
+        mainLayout.itemAt(4).setAlignment(Qt.AlignHCenter)
+        mainLayout.addLayout(costLayout)
+
         mainLayout.addWidget(fileButton)
-        mainLayout.itemAt(5).setAlignment(Qt.AlignHCenter)
+        mainLayout.itemAt(6).setAlignment(Qt.AlignHCenter)
         self.setCentralWidget(mainWidget)
 
         self.error_box = QMessageBox()
         self.error_box.setWindowTitle("Помилка")
         self.error_box.setStyleSheet("QMessageBox { background-color: #FE896E;}"
-                                   "QPushButton { background-color: #FFD798; }")
+                                     "QPushButton { background-color: #FFD798; }")
         self.error_box.addButton(QMessageBox.Ok)
 
         self.message_box = QMessageBox()
         self.message_box.setWindowTitle("Повідомлення")
         self.message_box.setStyleSheet("QMessageBox { background-color: #BFDB7F;}"
-                                     "QPushButton { background-color: #FFD798; }")
+                                       "QPushButton { background-color: #FFD798; }")
         self.message_box.addButton(QMessageBox.Ok)
 
     def start_button_clicked(self):
-        try:
-            if self.start is None or self.goal is None:
-                self.error_box.setText("Оберіть початковий і кінцевий стани")
-                self.error_box.exec()
-                return
-            if self.radio_astar.isChecked():
-                self.solution_path = Astar_search(self.start, self.goal)
-            elif self.radio_rbfs.isChecked():
-                self.solution_path = recursive_best_first_search(self.start, self.goal)
-            else:
-                self.error_box.setText("Будь ласка, оберіть один з алгоритмів")
-                self.error_box.exec()
-                return
-            if self.solution_path is None:
-                self.error_box.setText("Задача не має розв'язку")
-                self.error_box.exec()
-                return
-            path = self.solution_path[:]
-
-            self.display_solution(path)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
+        if self.start is None or self.goal is None:
+            self.error_box.setText("Помилка! Оберіть початковий і кінцевий стани")
+            self.error_box.exec()
+            return
+        if self.radio_astar.isChecked():
+            self.solution_path, cost = Astar(self.start, self.goal)
+        elif self.radio_rbfs.isChecked():
+            self.solution_path, cost = RBFS(self.start, self.goal)
+        else:
+            self.error_box.setText("Помилка! Оберіть один з алгоритмів")
+            self.error_box.exec()
+            return
+        if self.solution_path is None:
+            self.error_box.setText("Задача не має розв'язку")
+            self.error_box.exec()
+            return
+        path = self.solution_path[:]
+        self.costLabel.setText(str(cost))
+        self.display_solution(path)
 
     def display_solution(self, path):
+
         if not path:
             self.message_box.setText("Готово!!!")
             QTimer.singleShot(1500, lambda: self.message_box.exec())
             return
 
         step = path.pop(0)
-        QTimer.singleShot(1000, lambda step=step: self.update_puzzle(step, path))
+        QTimer.singleShot(700, lambda: self.update_puzzle(step, path))
         QApplication.processEvents()
 
     def update_puzzle(self, step, path):
@@ -322,6 +326,7 @@ class MainWindow(QMainWindow):
         if puzzle_input_dialog.exec_() == QDialog.Accepted:
             self.start, self.goal = puzzle_input_dialog.get_puzzle_input()
             self.puzzleLayout.update_layout(self.start)
+            self.costLabel.setText("")
 
     def random_button_clicked(self):
         start = sample(range(1, 9), 8)
@@ -337,15 +342,16 @@ class MainWindow(QMainWindow):
             self.start = start[:]
             self.goal = end[:]
             self.puzzleLayout.update_layout(self.start)
+            self.costLabel.setText("")
 
     def str_puzzle(self, i):
-        state = self.solution_path[i]
+        state = self.solution_path[i][:]
         state[state.index(" ")] = "_"
         return str(' '.join(map(str, state[0:3])) + '\n' + ' '.join(map(str, state[3:6])) + '\n' + ' '.join(map(str, state[6:9])))
 
     def file_button_clicked(self):
         if self.solution_path is None:
-            self.error_box.setText("Жодногорозв'язку знайдено не було")
+            self.error_box.setText("Помилка! Жодного розв'язку знайдено не було")
             self.error_box.exec()
             return
         with open("solution.txt", 'w') as file:
@@ -353,8 +359,7 @@ class MainWindow(QMainWindow):
             for i in range(1, len(self.solution_path)):
                 file.write("\n\n  | \n \\|/ \n\n")
                 file.write(self.str_puzzle(i))
+        file.close()
  
         self.message_box.setText("Розв'язок записано у файл solution.txt")
         self.message_box.exec()
-
-
